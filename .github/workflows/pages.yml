@@ -1,0 +1,65 @@
+name: Site web (GitHub Pages)
+
+# Site vitrine + application web (mode démo) sur GitHub Pages, avec le dernier APK à télécharger.
+# Lancé après chaque construction réussie de l'APK (et à la demande depuis l'onglet Actions).
+on:
+  workflow_run:
+    workflows: ['APK Android']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Construction du site (sous-dossier du dépôt)
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_DATA_MODE: mock
+          VITE_APP_VERSION: ${{ github.event.workflow_run.run_number || github.run_number }}
+        run: |
+          npx vite build
+          # Application à pages multiples : toute adresse inconnue renvoie l'application.
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
+
+      - name: Dernier APK à télécharger depuis le site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download --repo "$GITHUB_REPOSITORY" --pattern FitLife.apk --dir dist --clobber
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,7 @@
+**/node_modules
+frontend/dist
+**/*.tsbuildinfo
+.git
+backend/.env
+.env
+backend/public/uploads/avatars/*

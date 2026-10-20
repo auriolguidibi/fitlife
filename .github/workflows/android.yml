@@ -1,0 +1,228 @@
+name: APK Android
+
+# Construit l'APK FitLife sur les serveurs GitHub (aucune installation Android en local)
+# et le publie dans « Releases ».
+#  - À chaque push sur main (dossier frontend) : APK en mode démo (données sur le téléphone).
+#  - Lancement manuel (onglet Actions → APK Android → Run workflow) : indiquer l'adresse du
+#    serveur en ligne pour un APK connecté à la vraie base de données.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'database/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Adresse du serveur en ligne (ex. https://fitlife.up.railway.app). Vide = mode démo.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  api:
+    # Test du serveur PHP avec une vraie base MySQL (installation + parcours principaux de l'API).
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+          MYSQL_DATABASE: fitlife
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_NAME: fitlife
+      DB_USER: root
+      DB_PASS: ci-root
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else
+      SEED_DEMO_PASSWORD: ci-demo-pass
+      SEED_COACH_PASSWORD: ci-coach-pass
+      SEED_SUPERADMIN_PASSWORD: ci-super-pass
+      SEED_ADMIN_PASSWORD: ci-admin-pass
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntaxe PHP
+        run: find backend -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Installation de la base (schema + comptes)
+        run: php backend/bin/seed.php
+      - name: Démarrage de l'API
+        run: |
+          php -S 127.0.0.1:8080 -t backend/public backend/public/index.php > /tmp/php.log 2>&1 &
+          sleep 2
+      - name: Tests de bout en bout
+        run: bash backend/tests/smoke.sh
+      - name: Tests de sécurité
+        run: bash backend/tests/security.sh
+      - name: Tests du paiement FedaPay (faux serveur FedaPay, aucun argent réel)
+        run: |
+          php -S 127.0.0.1:9090 backend/tests/fedapay_mock.php > /tmp/mock.log 2>&1 &
+          FEDAPAY_SECRET_KEY=sk_sandbox_ci_test FEDAPAY_API_BASE=http://127.0.0.1:9090/v1             php -S 127.0.0.1:8081 -t backend/public backend/public/index.php > /tmp/php-pay.log 2>&1 &
+          sleep 2
+          bash backend/tests/payments.sh
+      - name: Journal du serveur (en cas d'échec)
+        if: failure()
+        run: cat /tmp/php.log /tmp/php-pay.log /tmp/mock.log || true
+
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # Adresse du serveur en ligne : saisie au lancement manuel, sinon variable du dépôt API_URL.
+      API_URL: ${{ github.event.inputs.api_url || vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Interface (mode démo ou API)
+        run: |
+          if [ -n "$API_URL" ]; then
+            export VITE_DATA_MODE=api VITE_API_URL="$API_URL"
+            echo "MODE=api" >> "$GITHUB_ENV"
+          else
+            export VITE_DATA_MODE=mock
+            echo "MODE=demo" >> "$GITHUB_ENV"
+          fi
+          # Version application : sans le bouton « Télécharger l'application » (réservé au site web)
+          export VITE_TARGET=app
+          export VITE_APP_VERSION=${{ github.run_number }}
+          npx vite build
+
+      - name: Projet Android + icônes
+        run: |
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#000503' --splashBackgroundColor '#000503'
+
+      - name: Module natif (autorisations caméra / micro des lives)
+        run: cp native/android/*.java android/app/src/main/java/com/fitlife/app/
+
+      - name: Permissions (GPS, photos, réseau, caméra, micro, notifications)
+        run: |
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          perms = [
+              'android.permission.INTERNET',
+              'android.permission.ACCESS_FINE_LOCATION',
+              'android.permission.ACCESS_COARSE_LOCATION',
+              'android.permission.READ_MEDIA_IMAGES',
+              'android.permission.CAMERA',
+              'android.permission.RECORD_AUDIO',
+              'android.permission.MODIFY_AUDIO_SETTINGS',
+              'android.permission.POST_NOTIFICATIONS',
+              'android.permission.ACTIVITY_RECOGNITION',
+          ]
+          block = ''.join(f'    <uses-permission android:name="{x}" />\n' for x in perms if x not in s)
+          s = s.replace('<application', block + '\n    <application', 1)
+          open(p, 'w').write(s)
+          PY
+
+      - name: Synchronisation Capacitor
+        run: npx cap sync android
+
+      - name: Compilation de l'APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Nommage
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "FitLife-${MODE}.apk"
+          # Nom stable : le bouton « Télécharger l'application » du site pointe sur releases/latest/download/FitLife.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk FitLife.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FitLife-${{ env.MODE }}-apk
+          path: frontend/FitLife-${{ env.MODE }}.apk
+
+      - name: Publication dans Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: FitLife Android ${{ github.run_number }} (${{ env.MODE }})
+          body: |
+            APK FitLife — mode **${{ env.MODE }}**.
+            Installation : télécharger `FitLife.apk` sur le téléphone, l'ouvrir et autoriser
+            « Installer des applications inconnues » si Android le demande.
+          files: frontend/FitLife.apk
+          make_latest: true
+
+      - name: Mise en ligne de l'APK sur le site (mode serveur)
+        if: env.MODE == 'api'
+        run: |
+          cp FitLife.apk public/FitLife.apk
+          git config user.name "FitLife CI"
+          git config user.email "ci@fitlife.app"
+          git add -f public/FitLife.apk
+          git commit -m "APK ${{ github.run_number }} en ligne sur le site [skip ci]" || exit 0
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  camera:
+    # Vérifie sur un émulateur Android que la caméra s'ouvre vraiment dans l'application.
+    # (APK de démonstration uniquement : l'APK « serveur » dépend du site en ligne.)
+    needs: apk
+    if: ${{ !(github.event.inputs.api_url || vars.API_URL) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FitLife-demo-apk
+          path: apk
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Place disque pour l'émulateur
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk/ndk /opt/hostedtoolcache/CodeQL /usr/local/.ghcup || true
+          df -h /
+      - name: Accélération matérielle (KVM)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test caméra sur émulateur Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          disk-size: 3000M
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -camera-front emulated -camera-back emulated
+          script: bash frontend/native/test/camera-test.sh apk/FitLife-demo.apk camera-test
+      - name: Preuve (capture d'écran)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: camera-test
+          path: camera-test

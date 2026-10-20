@@ -1,0 +1,198 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-white font-sans antialiased;
+  overscroll-behavior-y: none;
+}
+
+@layer base {
+  h1,
+  h2,
+  .font-display {
+    font-family: 'Space Grotesk', Manrope, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* Surface standard des cartes : léger dégradé + liseré lumineux en haut.
+     En couche "components" pour que les utilitaires (bg-*, border-*) restent prioritaires. */
+  .surface {
+    background-color: #0e1310;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(0, 0, 0, 0.1) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 14px 34px -20px rgba(0, 0, 0, 0.8);
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-ink-700/70 backdrop-blur-xl border border-white/5;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ---------- Écrans d'authentification ---------- */
+
+.auth-grid {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 70% at 30% 40%, #000 30%, transparent 80%);
+}
+
+.aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.55;
+  animation: aurora 18s ease-in-out infinite alternate;
+}
+.aurora-2 {
+  animation-duration: 24s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes aurora {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(60px, -40px) scale(1.15); }
+  100% { transform: translate(-40px, 50px) scale(0.95); }
+}
+
+/* Bordure dégradée lumineuse autour de la carte du formulaire */
+.glow-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(18, 26, 21, 0.88), rgba(8, 11, 9, 0.92));
+  backdrop-filter: blur(24px);
+}
+.glow-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(140deg, rgba(34, 197, 94, 0.55), rgba(255, 255, 255, 0.06) 35%, rgba(255, 255, 255, 0.04) 65%, rgba(34, 197, 94, 0.3));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.kenburns {
+  animation: kenburns 7s ease-out forwards;
+}
+@keyframes kenburns {
+  from { transform: scale(1.12) translate(1%, 1%); }
+  to { transform: scale(1) translate(0, 0); }
+}
+
+.float-slow { animation: float 6s ease-in-out infinite; }
+.float-slower { animation: float 8s ease-in-out infinite; animation-delay: -3s; }
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.rise {
+  animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.shine {
+  position: relative;
+  overflow: hidden;
+}
+.shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.8s ease;
+}
+.shine:hover::after {
+  transform: translateX(120%);
+}
+
+.ekg path {
+  stroke-dasharray: 120;
+  animation: ekg 2.2s linear infinite;
+}
+@keyframes ekg {
+  from { stroke-dashoffset: 240; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(16deg); }
+  20%, 40% { transform: rotate(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora, .kenburns, .float-slow, .float-slower, .rise, .ekg path { animation: none; }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1b2e23;
+  border-radius: 999px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 22px;
+  width: 22px;
+  border-radius: 999px;
+  background: #22c55e;
+  cursor: pointer;
+  border: 3px solid #020b07;
+  box-shadow: 0 0 0 2px #22c55e;
+}
+input[type='range']::-moz-range-thumb {
+  height: 22px;
+  width: 22px;
+  border: 3px solid #020b07;
+  border-radius: 999px;
+  background: #22c55e;
+  cursor: pointer;
+}

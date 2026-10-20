@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+backend/.env
+backend/public/uploads/avatars/*
+!backend/public/uploads/avatars/.gitignore
+.DS_Store
+frontend/android/
+*.apk
+# APK servi par le site en ligne (déposé automatiquement par GitHub Actions)
+!frontend/public/FitLife.apk
+
+# Identifiants locaux (jamais publiés)
+IDENTIFIANTS-DEMO.md
+RAILWAY-VARIABLES.txt
