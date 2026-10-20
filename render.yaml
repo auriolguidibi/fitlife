@@ -1,0 +1,46 @@
+# Render : application + API FitLife (image Docker à la racine).
+# La base MySQL 8 est hébergée ailleurs (ex. Aiven, offre gratuite) : renseigner DB_* au déploiement.
+# JWT_SECRET et les mots de passe des comptes de départ sont générés par Render (onglet Environment).
+services:
+  - type: web
+    name: fitlife-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # Base de données (valeurs fournies par l'hébergeur MySQL)
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_SSL
+        value: "1"
+      # Paiement FedaPay : commencer en sandbox (clé sk_sandbox_…), passer en live ensuite
+      - key: FEDAPAY_SECRET_KEY
+        sync: false
+      - key: FEDAPAY_ENV
+        value: sandbox
+      - key: APP_URL
+        sync: false
+      # Comptes créés au premier démarrage (base vide)
+      - key: SEED_SUPERADMIN_EMAIL
+        sync: false
+      - key: SEED_SUPERADMIN_PASSWORD
+        generateValue: true
+      - key: SEED_ADMIN_PASSWORD
+        generateValue: true
+      - key: SEED_COACH_PASSWORD
+        generateValue: true
+      - key: SEED_DEMO_PASSWORD
+        generateValue: true
